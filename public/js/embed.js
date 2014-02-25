@@ -58,7 +58,33 @@ if (window.jsbinified !== undefined) return;
     })
 });
 
-// ---- here begins the jsbin embed - based on the embedding doc: https://github.com/remy/jsbin/blob/master/docs/embedding.md
+function getQuery(querystring) {
+  var query = {};
+
+  var pairs = querystring.split('&'),
+      length = pairs.length,
+      keyval = [],
+      i = 0;
+
+  for (; i < length; i++) {
+    keyval = pairs[i].split('=', 2);
+    try {
+      keyval[0] = decodeURIComponent(keyval[0]); // key
+      keyval[1] = decodeURIComponent(keyval[1]); // value
+    } catch (e) {}
+
+    if (query[keyval[0]] === undefined) {
+      query[keyval[0]] = keyval[1];
+    } else {
+      query[keyval[0]] += ',' + keyval[1];
+    }
+  }
+
+  return query;
+}
+
+
+// ---- here begins the jsbin embed - based on the embedding doc: https://github.com/jsbin/jsbin/blob/master/docs/embedding.md
 
 var innerText = document.createElement('i').innerText === undefined ? 'textContent' : 'innerText';
 
@@ -169,18 +195,26 @@ function scoop(link) {
 
 function embed(link) {
   var iframe = document.createElement('iframe'),
-      resize = document.createElement('div');
-  iframe.src = link.href;
-  iframe._src = link.href; // support for google slide embed
-  iframe.className = 'jsbin-embed';
+      resize = document.createElement('div'),
+      url = link.href.replace(/edit/, 'embed');
+  iframe.src = url;
+  iframe._src = url; // support for google slide embed
+  iframe.className = link.className; // inherit all the classes from the link
+  iframe.id = link.id; // also inherit, giving more style control to the user
   iframe.style.border = '1px solid #aaa';
-  iframe.style.width = '100%';
-  iframe.style.minHeight = '300px';
+
+  var query = getQuery(link.search);
+  iframe.style.width = query.width || '100%';
+  iframe.style.minHeight = query.height || '300px';
+  if (query.height) {
+    iframe.style.maxHeight = query.height;
+  }
   link.parentNode.replaceChild(iframe, link);
 
   var onmessage = function (event) {
     event || (event = window.event);
-    iframe.style.height = event.data.height + 'px';
+    // * 1 to coerse to number, and + 2 to compensate for border
+    iframe.style.height = (event.data.height * 1 + 2) + 'px';
   };
 
   if (window.addEventListener) {

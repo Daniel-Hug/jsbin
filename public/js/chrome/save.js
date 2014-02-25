@@ -1,3 +1,36 @@
+var saving = {
+  todo: {
+    html: false,
+    css: false,
+    javascript: false
+  },
+  _inprogress: false,
+  inprogress: function (inprogress) {
+    if (typeof inprogress === 'undefined') {
+      return saving._inprogress;
+    }
+
+    saving._inprogress = inprogress;
+    if (inprogress === false) {
+      var panels = ['html','css','javascript'],
+          todo;
+
+      var save = function () {
+        var todo = panels.pop();
+        if (todo && saving.todo[todo]) {
+          saving._inprogress = true;
+          updateCode(todo, save);
+          saving.todo[todo] = false;
+        } else if (todo) {
+          save();
+        }
+      };
+
+      save();
+    }
+  }
+};
+
 // to allow for download button to be introduced via beta feature
 $('a.save').click(function (event) {
   event.preventDefault();
@@ -10,30 +43,29 @@ $('a.save').click(function (event) {
 });
 
 var $shareLinks = $('#share .link');
-$document.one('saved', function () {
-  $shareLinks.removeClass('disabled').unbind('click mousedown mouseup');
-});
 
-function onSaveError(jqXHR) {
-  if (jqXHR.status === 413) {
-    // Hijack the tip label to show an error message.
-    $('#tip p').html('Sorry this bin is too large for us to save');
-    $(document.documentElement).addClass('showtip');
-  } else {
-    window._console.error({message: 'Warning: Something went wrong while saving. Your most recent work is not saved.'});;
-  }
-}
+$panelCheckboxes = $('#sharemenu #sharepanels input');
 
 function updateSavedState() {
+  var mapping = {
+    live: 'output',
+    javascript: 'js',
+    css: 'css',
+    html: 'html',
+    console: 'console'
+  };
+  var query = $panelCheckboxes.filter(':checked').map(function () {
+    return mapping[this.getAttribute('data-panel')];
+  }).get().join(',');
   $shareLinks.each(function () {
-    var url = jsbin.getURL() + this.getAttribute('data-path'),
+    var url = jsbin.getURL() + this.getAttribute('data-path') + (query && this.id !== 'livepreview' ? '?' + query : ''),
         nodeName = this.nodeName;
     if (nodeName === 'A') {
       this.href = url;
     } else if (nodeName === 'INPUT') {
       this.value = url;
     } else if (nodeName === 'TEXTAREA') {
-      this.value = ('<a class="jsbin-embed" href="' + url + '?live">' + documentTitle + '</a><' + 'script src="' + jsbin.static + '/js/embed.js"><' + '/script>').replace(/<>"&/g, function (m) {
+      this.value = ('<a class="jsbin-embed" href="' + url + '">' + documentTitle + '</a><' + 'script src="' + jsbin.static + '/js/embed.js"><' + '/script>').replace(/<>"&/g, function (m) {
           return {
             '<': '&lt;',
             '>': '&gt;',
@@ -59,6 +91,9 @@ $document.on('saved', function () {
 
 var saveChecksum = jsbin.state.checksum || sessionStorage.getItem('checksum') || false;
 
+// store it back on state
+jsbin.state.checksum = saveChecksum;
+
 if (saveChecksum) {
   // remove the disabled class, but also remove the cancelling event handlers
   $('#share div.disabled').removeClass('disabled').unbind('click mousedown mouseup');
@@ -69,30 +104,38 @@ if (saveChecksum) {
   });
 }
 
-// TODO decide whether to expose this code, it disables live saving for IE users
-// until they refresh - via a great big yellow button. For now this is hidden
-// in favour of the nasty hash hack.
-if (false) { // !saveChecksum && !history.pushState) {
-  jsbin.saveDisabled = true;
+$document.one('saved', function () {
+  $('#share div.disabled').removeClass('disabled').unbind('click mousedown mouseup');
+});
 
-  $document.bind('jsbinReady', function () {
-    $document.one('codeChange', function () {
-      $('#start-saving').css('display', 'inline-block');
-    });
-  });
+function onSaveError(jqXHR, panelId) {
+  if (jqXHR.status === 413) {
+    // Hijack the tip label to show an error message.
+    $('#tip p').html('Sorry this bin is too large for us to save');
+    $(document.documentElement).addClass('showtip');
+  } else {
+    if (panelId) savingLabels[panelId].text('Saving...').animate({ opacity: 1 }, 100);
+    window._console.error({message: 'Warning: Something went wrong while saving. Your most recent work is not saved.'});
+    // $document.trigger('tip', {
+    //   type: 'error',
+    //   content: 'Something went wrong while saving. Your most recent work is not saved.'
+    // });
+  }
 }
+
+
 
 // only start live saving it they're allowed to (whereas save is disabled if they're following)
 if (!jsbin.saveDisabled) {
+  $('.code.panel .label .name').append('<span>Saved</span>');
+
+  var savingLabels = {
+    html: $('.panel.html .name span'),
+    javascript: $('.panel.javascript .name span'),
+    css: $('.panel.css .name span')
+  };
+
   $document.bind('jsbinReady', function () {
-    $('.code.panel .label .name').append('<span>Saved</span>');
-
-    var savingLabels = {
-      html: $('.panel.html .name span'),
-      javascript: $('.panel.javascript .name span'),
-      css: $('.panel.css .name span')
-    };
-
     jsbin.panels.allEditors(function (panel) {
       panel.on('processor', function () {
         // if the url doesn't match the root - i.e. they've actually saved something then save on processor change
@@ -111,58 +154,100 @@ if (!jsbin.saveDisabled) {
 
     $document.bind('saveComplete', throttle(function (event, data) {
       // show saved, then revert out animation
-      savingLabels[data.panelId].stop(true, true).animate({ 'opacity': 1 }, 100).delay(1200).animate({
-        'opacity': '0'
-      }, 500);
+      savingLabels[data.panelId]
+        .text('Saved')
+        .stop(true, true)
+        .animate({ opacity: 1 }, 100)
+        .delay(1200)
+        .animate({ opacity: 0 }, 500);
     }, 500));
 
-    // TODO use sockets for streaming...or not?
-    // var stream = false;
-
-    // if (jsbin.state.stream && window.WebSocket) {
-    //   stream = new WebSocket('ws://' + window.location.origin + '/update');
-    // }
-
     $document.bind('codeChange', throttle(function (event, data) {
-      if (!data.panelId) return;
-
-      var panelId = data.panelId,
-          panelSettings = {};
-
-      if (jsbin.state.processors) {
-        panelSettings.processors = jsbin.state.processors;
+      if (!data.panelId) {
+        return;
       }
 
-      if (!saveChecksum) {
+      if (jsbin.state.deleted) {
+        return;
+      }
+
+      var panelId = data.panelId;
+
+      if (saving.inprogress()) {
+        // queue up the request and wait
+        saving.todo[panelId] = true;
+        return;
+      }
+
+      saving.inprogress(true);
+
+      // We force a full save if there's no checksum OR if there's no bin code/url
+      if (!saveChecksum || !jsbin.state.code) {
         // create the bin and when the response comes back update the url
         saveCode('save', true);
       } else {
-        $.ajax({
-          url: jsbin.getURL() + '/save',
-          data: {
-            code: jsbin.state.code,
-            revision: jsbin.state.revision,
-            method: 'update',
-            panel: data.panelId,
-            content: editors[data.panelId].getCode(),
-            checksum: saveChecksum,
-            settings: JSON.stringify(panelSettings)
-          },
-          type: 'post',
-          dataType: 'json',
-          headers: {'Accept': 'application/json'},
-          success: function (data) {
-            $document.trigger('saveComplete', { panelId: panelId });
-            if (data.error) {
-              saveCode('save', true, function (data) {
-                // savedAlready = data.checksum;
-              });
-            }
-          },
-          error: onSaveError
-        });
+        updateCode(panelId);
       }
     }, 250));
+  });
+} else {
+  $document.one('jsbinReady', function () {
+    var shown = false;
+    if (!jsbin.embed && !jsbin.sandbox) {
+      $document.on('codeChange', function (event, data) {
+        if (!data.onload && !shown && data.origin !== 'setValue') {
+          shown = true;
+          var ismac = navigator.userAgent.indexOf(' Mac ') !== -1;
+          var cmd = ismac ? '⌘' : 'ctrl';
+          var shift = ismac ? '⇧' : 'shift';
+          var plus = ismac ? '' : '+';
+
+          $document.trigger('tip', {
+            type: 'notification',
+            content: 'You\'re currently viewing someone else\'s live stream, but you can <strong><a href="">clone your own copy</a></strong> (' + cmd + plus + shift + plus + 'S) at any time to save your edits'
+          });
+        }
+      });
+    }
+  });
+}
+
+function updateCode(panelId, callback) {
+  var panelSettings = {};
+
+  if (jsbin.state.processors) {
+    panelSettings.processors = jsbin.state.processors;
+  }
+
+  $.ajax({
+    url: jsbin.getURL() + '/save',
+    data: {
+      code: jsbin.state.code,
+      revision: jsbin.state.revision,
+      method: 'update',
+      panel: panelId,
+      content: editors[panelId].getCode(),
+      checksum: saveChecksum,
+      settings: JSON.stringify(panelSettings)
+    },
+    type: 'post',
+    dataType: 'json',
+    headers: {'Accept': 'application/json'},
+    success: function (data) {
+      $document.trigger('saveComplete', { panelId: panelId });
+      if (data.error) {
+        saveCode('save', true, function (data) {
+          // savedAlready = data.checksum;
+        });
+      }
+    },
+    error: function (jqXHR) {
+      onSaveError(jqXHR, panelId);
+    },
+    complete: function () {
+      saving.inprogress(false);
+      callback && callback();
+    }
   });
 }
 
@@ -246,6 +331,7 @@ function saveCode(method, ajax, ajaxCallback) {
         sessionStorage.setItem('checksum', data.checksum);
         saveChecksum = data.checksum;
 
+        jsbin.state.checksum = saveChecksum;
         jsbin.state.code = data.code;
         jsbin.state.revision = data.revision;
 
@@ -258,15 +344,82 @@ function saveCode(method, ajax, ajaxCallback) {
         $document.trigger('saved');
 
         if (window.history && window.history.pushState) {
-          window.history.pushState(null, edit, edit);
+          // updateURL(edit);
+          window.history.pushState(null, '', jsbin.getURL() + '/edit');
           sessionStorage.setItem('url', jsbin.getURL());
         } else {
           window.location.hash = data.edit;
         }
       },
-      error: onSaveError
+      error: function (jqXHR) {
+        onSaveError(jqXHR);
+      },
+      complete: function () {
+        saving.inprogress(false);
+      }
     });
   } else {
     $form.submit();
   }
 }
+
+/**
+ * Returns the similar part of two strings
+ * @param  {String} a first string
+ * @param  {String} b second string
+ * @return {String}   common substring
+ */
+function sameStart(a, b) {
+  if (a == b) return a;
+
+  var tmp = b.slice(0, 1);
+  while (a.indexOf(b.slice(0, tmp.length + 1)) === 0) {
+    tmp = b.slice(0, tmp.length + 1);
+  }
+
+  return tmp;
+}
+
+/*
+
+// refresh the window when we popstate, because for now we don't do an xhr to
+// inject the panel content...yet.
+window.onpopstate = function onpopstate(event) {
+  // ignore the first popstate event, because that comes from the browser...
+  if (!onpopstate.first) window.location.reload();
+  else onpopstate.first = false;
+};
+
+onpopstate.first = true;
+
+function updateURL(path) {
+  var old = location.pathname,
+      back = true,
+      same = sameStart(old, path);
+      sameAt = same.length;
+
+  if (updateURL.timer) window.cancelAnimationFrame(updateURL.timer);
+
+  var run = function () {
+    if (location.pathname !== path) {
+      updateURL.timer = window.requestAnimationFrame(run);
+    }
+
+    if (location.pathname !== same) {
+      if (back) {
+        history.replaceState({ path: path }, '', location.pathname.slice(0, -1));
+      } else {
+        history.replaceState({ path: path }, '', path.slice(0, location.pathname.length + 1));
+      }
+    } else {
+      back = false;
+      history.replaceState({ path: path }, '', path.slice(0, sameAt + 2));
+    }
+  };
+
+  history.pushState({ path: path }, '', location.pathname.slice(0, -1));
+
+  run();
+}
+
+*/

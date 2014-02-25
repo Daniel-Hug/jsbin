@@ -1,17 +1,28 @@
-//= require "../chrome/esc"
-
-var $startingpoint = $('#startingpoint').click(function (event) {
+var $startingpoint = $('a.startingpoint').click(function (event) {
   event.preventDefault();
   if (localStorage) {
     analytics.saveTemplate();
     localStorage.setItem('saved-javascript', editors.javascript.getCode());
     localStorage.setItem('saved-html', editors.html.getCode());
-    $startingpoint.addClass('saved');
-    $('#tip p').html('Default starting point now changed to current code');
-    $html.addClass('showtip');
+    localStorage.setItem('saved-css', editors.css.getCode());
+
+    $document.trigger('tip', {
+      type: 'notification',
+      content: 'Starting template updated and saved',
+      autohide: 3000
+    });
+  } else {
+    $document.trigger('tip', {
+      type: 'error',
+      content: 'Saving templates isn\'t supported in this browser I\'m afraid. Sorry'
+    });
   }
   return false;
 });
+
+// if (localStorage && localStorage['saved-html']) {
+  // $startingpoint.append('')
+// }
 
 $('a.disabled').on('click mousedown mouseup', function (event) {
   event.stopImmediatePropagation();
@@ -20,48 +31,76 @@ $('a.disabled').on('click mousedown mouseup', function (event) {
 
 $('#loginbtn').click(function () {
   analytics.login();
+  $(this).toggleClass('open');
   // $('#login').show();
   // loginVisible = true;
-  $username.focus();
   // return false;
 });
 
-$('.logout').click(function (event) {
+$('a.logout').click(function (event) {
   event.preventDefault();
 
   // We submit a form here because I can't work out how to style the button
   // element in the form to look the same as the anchor. Ideally we would
   // remove that and just let the form submit itself...
   $(this.hash).submit();
+  // Clear session storage so private bins wont be cached.
+  for (i = 0; i < sessionStorage.length; i++) {
+    key = sessionStorage.key(i);
+    if (key.indexOf('jsbin.content.') === 0) {
+      sessionStorage.removeItem(key);
+    }
+  }
 });
 
-$('.homebtn').click(function () {
+$('.homebtn').click(function (event, data) {
   if (this.id === 'avatar') {
     analytics.openFromAvatar();
+  } else if (this.id === 'profile') {
+    analytics.openFromAvatar();
+    $(this).closest('.open').removeClass('open');
   } else {
-    analytics.open();
+    analytics.open(data);
   }
-  
+
   jsbin.panels.hideAll();
   return false;
 });
 
-var $lockrevision = $('.lockrevision').click(function (event) {
+var $lockrevision = $('.lockrevision').on('click', function (event) {
   event.preventDefault();
-  analytics.lock();
-  $lockrevision.addClass('disabled').attr('disabled', true);
-  saveChecksum = false;
+  if (!$lockrevision.data('lock')) {
+    analytics.lock();
+    $lockrevision.removeClass('icon-unlocked').addClass('icon-lock');
+    $lockrevision.html('<span>This bin is now locked from further changes</span>');
+    $lockrevision.data('locked', true);
+    saveChecksum = false;
+    $document.trigger('locked');
+  }
+  return false;
+}).on('mouseup', function () {
+  return false;
 });
 
 $document.on('saved', function () {
-  $lockrevision.val(function (i, val) {
-    return val.replace(/#\d+$/, '#' + jsbin.state.revision);
-  });
+  $lockrevision.removeClass('icon-lock').addClass('icon-unlocked').data('locked', false);
+  $lockrevision.html('<span>Click to lock and prevent further changes</span>');
 });
 
+$('#share input[type=text], #share textarea').on('beforecopy', function (event) {
+  analytics.share('copy', this.getAttribute('data-path').substring(1) || 'output');
+});
+
+var $panelCheckboxes = $('#sharepanels input').on('change click', updateSavedState);
 $('#sharemenu').bind('open', function () {
-  analytics.openShare();
-  $lockrevision.removeClass('disabled').removeAttr('disabled');
+  // analytics.openShare();
+  // $lockrevision.removeClass('icon-unlock').addClass('icon-lock');
+
+  $panelCheckboxes.attr('checked', false);
+  jsbin.panels.getVisible().forEach(function (panel) {
+    $panelCheckboxes.filter('[data-panel="' + panel.id + '"]').attr('checked', true).change();
+  });
+
 });
 
 var dropdownOpen = false,
@@ -72,6 +111,8 @@ function opendropdown(el) {
   var menu;
   if (!dropdownOpen) {
     menu = $(el).closest('.menu').addClass('open').trigger('open');
+    // $body.addClass('menuinfo');
+    analytics.openMenu(el.hash.substring(1));
     var input = menu.find(':text:visible:first').focus()[0];
     if (input) setTimeout(function () {
       input.select();
@@ -84,25 +125,17 @@ function closedropdown() {
   menuDown = false;
   if (dropdownOpen) {
     dropdownButtons.closest('.menu').removeClass('open').trigger('close');
+    // $body.removeClass('menuinfo');
     dropdownOpen = false;
     onhover = false;
   }
 }
 
-// RS: dupe?
-// $('.button-open').mousedown(function (e) {
-//   if (dropdownOpen && dropdownOpen !== this) closedropdown();
-//   if (!dropdownOpen) {
-//     menuDown = true;
-//     opendropdown(this);
-//   }
-//   e.preventDefault();
-//   return false;
-// });
-
 var dropdownButtons = $('.button-dropdown, .button-open').mousedown(function (e) {
   $dropdownLinks.removeClass('hover');
-  if (dropdownOpen && dropdownOpen !== this) closedropdown();
+  if (dropdownOpen && dropdownOpen !== this) {
+    closedropdown();
+  }
   if (!dropdownOpen) {
     menuDown = true;
     opendropdown(this);
@@ -113,6 +146,7 @@ var dropdownButtons = $('.button-dropdown, .button-open').mousedown(function (e)
   if (menuDown) return false;
 }).click(function () {
   if (!menuDown) {
+    analytics.closeMenu(this.hash.substring(1));
     closedropdown();
   }
   menuDown = false;
@@ -141,8 +175,9 @@ $body.bind('mousedown', function (event) {
 });
 
 var fromClick = false;
-var $dropdownLinks = $('.dropdownmenu a').mouseup(function () {
+var $dropdownLinks = $('.dropdownmenu a, .dropdownmenu .button').mouseup(function () {
   setTimeout(closedropdown, 0);
+  analytics.selectMenu(this.getAttribute('data-label') || this.hash.substring(1) || this.href);
   if (!fromClick) {
     if (this.hostname === window.location.hostname) {
       if ($(this).triggerHandler('click') !== false) {
@@ -170,7 +205,8 @@ $('#jsbinurl').click(function (e) {
   }, 0);
 });
 
-$('#runwithalerts').click(function () {
+$('#runwithalerts').click(function (event, data) {
+  analytics.run(data);
   if (editors.console.visible) {
     editors.console.render(true);
   } else {
@@ -180,7 +216,8 @@ $('#runwithalerts').click(function () {
 });
 
 $('#runconsole').click(function () {
-  editors.console.render();
+  analytics.runconsole();
+  editors.console.render(true);
   return false;
 });
 
@@ -188,7 +225,7 @@ $('#showhelp').click(function () {
   $body.toggleClass('keyboardHelp');
   keyboardHelpVisible = $body.is('.keyboardHelp');
   if (keyboardHelpVisible) {
-    analytics.help();
+    // analytics.help('keyboard');
   }
   return false;
 });
@@ -197,7 +234,7 @@ $('#showurls').click(function () {
   $body.toggleClass('urlHelp');
   urlHelpVisible = $body.is('.urlHelp');
   if (urlHelpVisible) {
-    analytics.urls();
+    // analytics.urls();
   }
   return false;
 });
@@ -221,7 +258,10 @@ $('#createnew').click(function () {
       sessionStorage.removeItem(key);
     }
   }
- 
+
+  // clear out the write checksum too
+  sessionStorage.removeItem('checksum');
+
   jsbin.panels.saveOnExit = true;
 
   // first try to restore their default panels
@@ -234,6 +274,37 @@ $('#createnew').click(function () {
       jsbin.panels.panels.live.show();
     }
   }, 0);
+});
+
+var $privateButton = $('#control a.visibilityToggle#private');
+var $publicButton = $('#control a.visibilityToggle#public');
+
+var $visibilityButtons = $('#control a.visibilityToggle').click(function(event) {
+  event.preventDefault();
+
+  var visibility = $(this).data('vis');
+
+  $.ajax({
+    url: jsbin.getURL() + '/' + visibility,
+    type: 'post',
+    success: function (data) {
+
+      $document.trigger('tip', {
+        type: 'notification',
+        content: 'This bin is now ' + visibility,
+        autohide: 6000
+      });
+
+      $visibilityButtons.css('display', 'none');
+
+      if (visibility === 'public') {
+        $privateButton.css('display', 'block');
+      } else {
+        $publicButton.css('display', 'block');
+      }
+
+    }
+  });
 });
 
 $('form.login').closest('.menu').bind('close', function () {
@@ -272,6 +343,25 @@ $('form input, form textarea').focus(function () {
 if (window.location.hash) {
   $('a[href$="' + window.location.hash + '"]').mousedown();
 }
+
+var ismac = navigator.userAgent.indexOf(' Mac ') !== -1,
+    mackeys = {
+      'ctrl': '⌘',
+      'shift': '⇧',
+      'del': '⌫'
+    };
+
+$('#control').find('a[data-shortcut]').each(function () {
+  var $this = $(this),
+      data = $this.data();
+
+  var key = data.shortcut;
+  if (ismac) {
+    key = key.replace(/ctrl/i, mackeys.ctrl).replace(/shift/, mackeys.shift).replace(/del/, mackeys.del).replace(/\+/g, '').toUpperCase();
+  }
+
+  $this.append('<span class="keyshortcut">' + key + '</span>');
+});
 
 (function () {
 
@@ -327,7 +417,29 @@ $('#addmeta').click(function () {
   return false;
 });
 
-// add navigation to insert meta data
+$('a.deletebin').on('click', function (e) {
+  e.preventDefault();
+  $.ajax({
+    type: 'post',
+    url: jsbin.getURL() + '/delete',
+    success: function () {
+      jsbin.state.deleted = true;
+      $document.trigger('tip', {
+        type: 'error',
+        content: 'This bin is now deleted. You can continue to edit, but once you leave the bin can\'t be retrieved'
+      });
+    },
+    error: function (xhr) {
+      if (xhr.status === 403) {
+        $document.trigger('tip', {
+          content: 'You don\'t own this bin, so you can\'t delete it.',
+          autohide: 5000,
+        });
+      }
+    }
+  });
+});
+
 
 
 }());

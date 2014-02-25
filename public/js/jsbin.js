@@ -65,7 +65,9 @@ if (storedSettings === "undefined") {
   storedSettings = null;
 }
 window.jsbin.settings = $.extend(JSON.parse(storedSettings || '{}'), jsbin.settings);
-
+if (jsbin.user) {
+  $.extend(window.jsbin.settings.editor, jsbin.user.settings);
+}
 // if the above code isn't dodgy, this for hellz bells is:
 jsbin.mobile = /WebKit.*Mobile.*|Android/.test(navigator.userAgent);
 jsbin.tablet = /iPad/i.test(navigator.userAgent); // sue me.
@@ -86,8 +88,10 @@ jsbin.ie = (function(){
 if (!storedSettings && (location.origin + location.pathname) === jsbin.root + '/') {
   // first timer - let's welcome them shall we, Dave?
   localStorage.setItem('settings', '{}');
-  window.location = jsbin.root + '/welcome/edit?html,live'
-    + (location.search.indexOf('api=') !== -1 ?  ',&' + location.search.substring(1) : '');
+  if (!jsbin.custom) {
+    window.location = jsbin.root + '/welcome/edit?html,live'
+      + (location.search.indexOf('api=') !== -1 ?  ',&' + location.search.substring(1) : '');
+  }
 }
 
 if (!jsbin.settings.editor) {
@@ -107,7 +111,8 @@ if (jsbin.settings.editor.theme) {
 // malicious form submissions from other domains.
 jQuery.ajaxPrefilter(function (options, original, xhr) {
   var skip = {head: 1, get: 1};
-  if (!skip[options.type.toLowerCase()]) {
+  if (!skip[options.type.toLowerCase()] &&
+      !options.url.match(/^https:\/\/api.github.com/)) {
     xhr.setRequestHeader('X-CSRF-Token', jsbin.state.token);
   }
 });
@@ -152,13 +157,13 @@ function objectValue(path, context) {
 }
 
 
-var $body = $('body'),
+var $window = $(window),
+    $body = $('body'),
     $document = $(document),
     debug = jsbin.settings.debug === undefined ? false : jsbin.settings.debug,
     documentTitle = 'JS Bin',
     $bin = $('#bin'),
     loadGist,
-    $document = $(document),
     // splitterSettings = JSON.parse(localStorage.getItem('splitterSettings') || '[ { "x" : null }, { "x" : null } ]'),
     unload = function () {
       // sessionStorage.setItem('javascript', editors.javascript.getCode());
@@ -171,7 +176,7 @@ var $body = $('body'),
           sessionStorage.setItem('character', 0);
         }
       }
-      
+
       sessionStorage.setItem('url', jsbin.getURL());
       localStorage.setItem('settings', JSON.stringify(jsbin.settings));
 
@@ -183,7 +188,7 @@ var $body = $('body'),
       if (panel) sessionStorage.setItem('panel', panel.id);
     };
 
-$(window).unload(unload);
+$window.unload(unload);
 
 // hack for Opera because the unload event isn't firing to capture the settings, so we put it on a timer
 if ($.browser.opera) {
@@ -248,7 +253,7 @@ if (false) { //window.top !== window && location.pathname.indexOf('/embed') === 
 }
 
 if (jsbin.embed) {
-  $(window).on('focus', function () {
+  $window.on('focus', function () {
     return false;
   });
 }

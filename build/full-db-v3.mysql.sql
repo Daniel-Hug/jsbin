@@ -50,6 +50,7 @@ CREATE TABLE `owners` (
   `css` tinyint(1) NOT NULL DEFAULT '0',
   `javascript` tinyint(1) NOT NULL DEFAULT '0',
   `archive` tinyint(1) NOT NULL DEFAULT '0',
+  `visibility` ENUM('public', 'unlisted', 'private') DEFAULT 'public' NOT NULL,
   PRIMARY KEY (`id`),
   KEY `name_url` (`name`,`url`,`revision`),
   KEY `last_updated` (`name`,`last_updated`)
@@ -64,10 +65,12 @@ DROP TABLE IF EXISTS `ownership`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `ownership` (
-  `name` char(50) NOT NULL,
+  `name` char(255) NOT NULL,
   `key` char(255) NOT NULL,
   `email` varchar(255) NOT NULL DEFAULT '',
   `api_key` VARCHAR(255) NULL,
+  `github_token` VARCHAR(255),
+  `github_id` int(11),
   `last_login` datetime NOT NULL,
   `created` datetime NOT NULL,
   `updated` datetime NOT NULL,

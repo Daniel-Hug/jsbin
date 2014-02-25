@@ -1,16 +1,4 @@
-//= require "codemirror"
-//= require "mobileCodeMirror"
-//= require "library"
-//= require "unsaved"
-//= require "panel"
-//= require "../render/live"
-//= require "../render/console"
-//= require "keycontrol"
-//= require "../processors/processor"
-
 var panels = {};
-
-var $window = $(window);
 
 panels.getVisible = function () {
   var panels = this.panels,
@@ -54,7 +42,7 @@ panels.restore = function () {
       location = window.location,
       search = location.search.substring(1),
       hash = location.hash.substring(1),
-      toopen = search || hash ? (search || hash).split(',') : jsbin.settings.panels || [],
+      toopen = [],
       state = jsbin.embed ? null : JSON.parse(sessionStorage.getItem('jsbin.panels') || 'null'),
       hasContent = {
         javascript: editors.javascript.getCode().length,
@@ -69,10 +57,43 @@ panels.restore = function () {
       openWithSameDimensions = false,
       width = $window.width(),
       deferredCodeInsert = '',
-      focused = !!sessionStorage.getItem('panel');
+      focused = !!sessionStorage.getItem('panel'),
+      validPanels = 'live javascript html css console'.split(' ');
 
   if (history.replaceState && (location.pathname.indexOf('/edit') !== -1) || ((location.origin + location.pathname) === jsbin.getURL() + '/')) {
     history.replaceState(null, '', jsbin.getURL() + (jsbin.getURL() === jsbin.root ? '' : '/edit'));
+  }
+
+  if (search || hash) {
+    // RS July 23, 2013 - I'm not mad on this change and
+    // would welcome a refactor to all the editor.js code
+    // because it's damn hard to navigate and work out
+    // what's happening.
+    // This change is mostly to create consistency between
+    // the panel name of 'output' and the shortcut 'live'.
+    // it also strips out prop=value& to avoid bashing the
+    // panel name
+    
+    toopen = decodeURIComponent(search || hash).replace(/\b([^&=]*)=([^&=]*)/g, '').replace(/&/g, '').split(',');
+
+    if (toopen.indexOf('output') !== -1) {
+      toopen.push('live');
+    }
+    if (toopen.indexOf('js') !== -1) {
+      toopen.push('javascript');
+    }
+  }
+
+  // strip out anything that wasn't recognised as a valid panel to open
+  for (i = 0; i < toopen.length; i++) {
+    if (validPanels.indexOf(toopen[i]) === -1) {
+      toopen.splice(i, 1);
+      i--;
+    }
+  }
+
+  if (toopen.length === 0) {
+    toopen = jsbin.settings.panels || [];
   }
 
   if (toopen.length === 0 && state === null) {
@@ -96,6 +117,7 @@ panels.restore = function () {
 
   /* Boot code */
   // then allow them to view specific panels based on comma separated hash fragment/query
+  i = 0;
   if (toopen.length) {
     for (name in state) {
       if (toopen.indexOf(name) !== -1) {
@@ -283,7 +305,7 @@ panels.hide = function (panelId) {
   if (panels[panelId].visible) {
     panels[panelId].hide();
   }
-  
+
   var visible = jsbin.panels.getVisible();
   if (visible.length) {
     jsbin.panels.focused = visible[0];
@@ -293,12 +315,16 @@ panels.hide = function (panelId) {
       jsbin.panels.focused.$el.focus();
     }
     jsbin.panels.focused.focus();
+  }
+
+  /*
   } else if ($history.length && !$body.hasClass('panelsVisible')) {
     $body.toggleClass('dave', $history.is(':visible'));
     $history.toggle(100);
   } else if ($history.length === 0) {
     // TODO load up the history
   }
+  */
 };
 
 panels.hideAll = function () {
@@ -412,13 +438,13 @@ editors.live.settings.render = function (showAlerts) {
 
 
 // Panel.prototype._show = Panel.prototype.show;
-// Panel.prototype.show = function () { 
+// Panel.prototype.show = function () {
 //   this._show.apply(this, arguments);
 //   panels.update();
 // }
 
 // Panel.prototype._hide = Panel.prototype.hide;
-// Panel.prototype.hide = function () { 
+// Panel.prototype.hide = function () {
 //   this._hide.apply(this, arguments);
 //   panels.update();
 // }
@@ -444,7 +470,7 @@ panels.focus(panels.getVisible()[0] || null);
   var panelsEl = document.getElementById('panels'),
       moving = null;
 
-  panelsEl.ondragstart = function (e) { 
+  panelsEl.ondragstart = function (e) {
     if (e.target.nodeName == 'A') {
       moving = e.target;
     } else {
@@ -452,13 +478,13 @@ panels.focus(panels.getVisible()[0] || null);
     }
   };
 
-  panelsEl.ondragover = function (e) { 
-    return false; 
+  panelsEl.ondragover = function (e) {
+    return false;
   };
 
-  panelsEl.ondragend = function () { 
+  panelsEl.ondragend = function () {
     moving = false;
-    return false; 
+    return false;
   };
 
   panelsEl.ondrop = function (e) {

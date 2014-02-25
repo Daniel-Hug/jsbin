@@ -5,7 +5,8 @@
     "host": "localhost:3000",
     "prefix": "/",
     "ssl": false,
-    "static": false
+    "static": false,
+    "runner": false
   },
   "max-request-size": "1MB",
   "store": {
@@ -22,13 +23,11 @@
       "collate": "utf8mb4_unicode_ci"
     }
   },
-  "session": {
-    "secret": "d41d8cd98f00b204e9800998ecf8427e"
-  },
   "analytics": {
     "id": null,
     "render-id": null
   },
+  "ui": {},
   "mail": {
     "adapter": "sendmail",
     "sendmail": {},
@@ -46,13 +45,17 @@
   "client": {
     "user": true
   },
+  "github": {
+    "id": "",
+    "secret": ""
+  },
   "notify": {
     "errors": [],
     "report": []
   },
   "api": {
-    "allowAnonymous": false,
-    "allowReadOnly": true,
+    "allowAnonymousReadWrite": false,
+    "allowAnonymousRead": true,
     "requireSSL": false
   },
   "blacklist": {
@@ -79,11 +82,16 @@
     "archive",
     "auth",
     "badges",
+    "bin",
+    "bins",
     "blog",
+    "bugs",
     "business",
     "contacts",
     "collection",
     "collections",
+    "css",
+    "delete",
     "devices",
     "download",
     "downloads",
@@ -94,27 +102,40 @@
     "find_users",
     "followers",
     "following",
+    "fonts",
+    "font",
     "friend_request",
     "friendrequest",
     "friends",
     "goodies",
     "help",
     "home",
+    "hooks",
+    "images",
+    "img",
     "inbox",
     "invitations",
     "invite",
+    "issues",
     "jobs",
+    "js",
     "last",
     "login",
     "logout",
     "me",
     "messages",
+    "new",
     "notifications",
     "nudge",
+    "null",
+    "open",
     "oauth",
+    "pro",
     "profile",
     "privacy",
     "rules",
+    "runner",
+    "scripts",
     "search",
     "sent",
     "settings",
@@ -124,6 +145,7 @@
     "static",
     "statistics",
     "terms",
+    "test",
     "tos",
     "translate",
     "trends",
@@ -133,6 +155,7 @@
     "widgets",
     "tutorials",
     "video",
-    "videos"
+    "videos",
+    "-"
   ]
 }

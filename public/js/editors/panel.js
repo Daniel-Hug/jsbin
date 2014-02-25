@@ -1,3 +1,5 @@
+/*globals $:true, CodeMirror:true, jsbin:true, emmet:true */
+
 var $document = $(document),
     $source = $('#source');
 
@@ -8,7 +10,8 @@ var editorModes = {
   typescript: 'javascript',
   markdown: 'markdown',
   coffeescript: 'coffeescript',
-  less: 'css',
+  jsx: 'jsx',
+  less: 'less',
   processing: 'text/x-csrc'
 };
 
@@ -25,7 +28,13 @@ if (!CodeMirror.commands) {
 }
 
 CodeMirror.commands.autocomplete = function(cm) {
-  return CodeMirror.simpleHint(cm, CodeMirror.javascriptHint);
+  if (CodeMirror.snippets(cm) === CodeMirror.Pass) {
+    return CodeMirror.simpleHint(cm, CodeMirror.javascriptHint);
+  }
+};
+
+CodeMirror.commands.snippets = function (cm) {
+  return CodeMirror.snippets(cm);
 };
 
 var foldFunc = {
@@ -46,7 +55,7 @@ var emmetToggleComment = emmet.require('actions').get('toggle_comment');
 emmet.require('actions').add('toggle_comment', function(editor) {
   var info = emmet.require('editorUtils').outputInfo(editor);
   if (info.syntax == 'javascript') {
-    // in case our editor is good enough and can recognize syntax from 
+    // in case our editor is good enough and can recognize syntax from
     // current token, we have to make sure that cursor is not inside
     // 'style' attribute of html element
     var editorUtils = emmet.require('editorUtils');
@@ -119,16 +128,6 @@ var Panel = function (name, settings) {
     });
   }
 
-  if (jsbin.state.processors && jsbin.state.processors[name]) {
-    panelLanguage = jsbin.state.processors[name];
-    jsbin.processors.set(panel, jsbin.state.processors[name]);
-  } else if (settings.processor) { // FIXME is this even used?
-    panelLanguage = settings.processors[settings.processor];
-    jsbin.processors.set(panel, settings.processor);
-  } else {
-    panel.processor = function (str) { return str; };
-  }
-
   if (settings.editor) {
     cmSettings = {
       parserfile: [],
@@ -153,6 +152,8 @@ var Panel = function (name, settings) {
     // the HTML panel too, but only when you were in JS scope
     if (name === 'javascript') {
       cmSettings.extraKeys.Tab = 'autocomplete';
+    } else {
+      cmSettings.extraKeys.Tab = 'snippets';
     }
 
     // cmSettings.extraKeys.Tab = 'snippets';
@@ -168,13 +169,11 @@ var Panel = function (name, settings) {
     panel.editor = CodeMirror.fromTextArea(panel.el, cmSettings);
 
     // Bind events using CM3 syntax
-    panel.editor.on('change', function (event) {
-      $document.trigger('codeChange', [{ panelId: panel.id, revert: true }]);
+    panel.editor.on('change', function codeChange(cm, changeObj) {
+      $document.trigger('codeChange', [{ panelId: panel.id, revert: true, origin: changeObj.origin }]);
       return true;
     });
-
     panel.editor.on('gutterClick', foldFunc[name]);
-
     panel.editor.on('focus', function () {
       panel.focus();
     });
@@ -188,6 +187,16 @@ var Panel = function (name, settings) {
   } else {
     // create a fake splitter to let the rest of the code work
     panel.splitter = $();
+  }
+
+  if (jsbin.state.processors && jsbin.state.processors[name]) {
+    panelLanguage = jsbin.state.processors[name];
+    jsbin.processors.set(panel, jsbin.state.processors[name]);
+  } else if (settings.processor) { // FIXME is this even used?
+    panelLanguage = settings.processors[settings.processor];
+    jsbin.processors.set(panel, settings.processor);
+  } else {
+    panel.processor = function (str) { return str; };
   }
 
   if (settings.beforeRender) {
@@ -226,6 +235,7 @@ Panel.prototype = {
   virgin: true,
   visible: false,
   show: function (x) {
+    $document.trigger('history:close');
     // check to see if there's a panel to the left.
     // if there is, take it's size/2 and make this our
     // width
@@ -353,7 +363,10 @@ Panel.prototype = {
 
     $document.trigger('sizeeditors');
     panel.trigger('hide');
-    // }, 110);
+
+    // note: the history:open does first check whether there's an open panels
+    // and if there are, it won't show the history, it'll just ignore the event
+    $document.trigger('history:open');
   },
   toggle: function () {
     (this)[this.visible ? 'hide' : 'show']();
@@ -366,7 +379,9 @@ Panel.prototype = {
   },
   setCode: function (content) {
     if (this.editor) {
-      if (content === undefined) content = '';
+      if (content === undefined) {
+        content = '';
+      }
       this.controlButton.toggleClass('hasContent', !!content.trim().length);
       this.codeSet = true;
       this.editor.setCode(content.replace(badChars, ''));
@@ -466,8 +481,8 @@ Panel.prototype = {
           offset += ($error.filter(':visible').height() || 0);
         }
 
-        if (!jsbin.lameEditor) { 
-          editor.scroller.height(height - offset); 
+        if (!jsbin.lameEditor) {
+          editor.scroller.height(height - offset);
         }
         try { editor.refresh(); } catch (e) {}
       }
@@ -539,7 +554,7 @@ function populateEditor(editor, panel) {
 
     // if we clone the bin, there will be a checksum on the state object
     // which means we happily have write access to the bin
-    if (sessionURL !== template.url && !jsbin.state.checksum) {
+    if (sessionURL !== jsbin.getURL() && !jsbin.state.checksum) {
       // nuke the live saving checksum
       sessionStorage.removeItem('checksum');
       saveChecksum = false;
@@ -547,7 +562,7 @@ function populateEditor(editor, panel) {
 
     if (template && cached == template[panel]) { // restored from original saved
       editor.setCode(cached);
-    } else if (cached && sessionURL == template.url) { // try to restore the session first - only if it matches this url
+    } else if (cached && sessionURL == jsbin.getURL()) { // try to restore the session first - only if it matches this url
       editor.setCode(cached);
       // tell the document that it's currently being edited, but check that it doesn't match the saved template
       // because sessionStorage gets set on a reload
